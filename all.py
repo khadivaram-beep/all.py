@@ -1,38 +1,46 @@
 import telebot
-from google import genai
+import requests
+import json
 
-# ۱. اطلاعات اصلی (بدون تغییر)
+# ۱. اطلاعات اصلی
 TELEGRAM_TOKEN = "8396499160:AAGbLexQ8M4KAc8DTubq5art5ImFSHeFQn0"
 GOOGLE_API_KEY = "AIzaSyDtTMrU6G8_ZJG5OXrQVCX-RE989YFn9s0"
 
-# ۲. اتصال به گوگل
-client = genai.Client(api_key=GOOGLE_API_KEY)
-
-# ۳. راه‌اندازی ربات تلگرام
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
+def get_gemini_response(text):
+    # آدرس مستقیم API گوگل بدون نیاز به کتابخانه اضافی
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
+    
+    headers = {'Content-Type': 'application/json'}
+    data = {
+        "contents": [{"parts": [{"text": text}]}]
+    }
+    
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+    result = response.json()
+    
+    # استخراج متن پاسخ
+    try:
+        return result['candidates'][0]['content']['parts'][0]['text']
+    except:
+        return f"❌ خطای گوگل: {result.get('error', {}).get('message', 'خطای ناشناخته')}"
+
 @bot.message_handler(func=lambda message: True)
-def handle_ai_chat(message):
+def handle_message(message):
     try:
         print(f"📥 پیام رسید: {message.text}")
         
-        # تغییر مهم: حذف کلمه models/ و استفاده از نام ساده
-        # همچنین تست با جدیدترین ورژن موجود
-        response = client.models.generate_content(
-            model="gemini-1.5-flash", 
-            contents=message.text
-        )
+        # دریافت پاسخ از تابع مستقیم
+        bot_response = get_gemini_response(message.text)
         
-        bot.reply_to(message, response.text)
-        print("✅ ایول! بالاخره جواب داد.")
+        bot.reply_to(message, bot_response)
+        print("✅ پاسخ ارسال شد.")
         
     except Exception as e:
-        err_msg = str(e)
-        print(f"❌ ارور: {err_msg}")
-        
-        # اگر باز هم مدل رو پیدا نکرد، این بار با یک اسم دیگه تست می‌کنه
-        bot.reply_to(message, "هنوز دارم تنظیمات مغزم رو ردیف می‌کنم، دوباره بفرست...")
+        print(f"❌ خطا: {e}")
+        bot.reply_to(message, "یه مشکل فنی پیش اومد، دوباره امتحان کن.")
 
 if __name__ == "__main__":
-    print("🚀 تلاش مجدد... علیرضا الان تست کن")
+    print("🔥 ربات با اتصال مستقیم فعال شد!")
     bot.infinity_polling()
