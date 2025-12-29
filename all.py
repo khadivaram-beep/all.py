@@ -3,11 +3,13 @@ import time
 import sqlite3
 from datetime import datetime
 
-# ۱. تنظیمات (توکن و آیدی مدیر)
+# ---------------------------------------------------------
+# تنظیمات (حتماً توکن و آیدی عددی خودت رو چک کن)
 BALE_TOKEN = "8396499160:AAGbLexQ8M4KAc8DTubq5art5ImFSHeFQn0"
 BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
-ADMIN_ID = 0  # <--- آیدی عددی خودت رو اینجا بذار (مثلاً 198273645)
+ADMIN_ID = 0  # <--- آیدی عددی خودت رو اینجا بذار (مثلاً 12345678)
 ADMIN_PASSWORD = "1109"
+# ---------------------------------------------------------
 
 def init_db():
     try:
@@ -48,7 +50,7 @@ def get_updates(offset=None):
     except:
         return None
 
-print("💎 ربات ضد ضربه و پایدار فعال شد. (CTRL+C برای خروج)")
+print("💎 ربات اصلاح شده و کامل فعال شد...")
 
 last_update_id = None
 
@@ -66,7 +68,7 @@ while True:
                     chat_id = update["callback_query"]["message"]["chat"]["id"]
                     data = update["callback_query"]["data"]
                     
-                    # اولویت‌بندی: اگر در حال ثبت است، اجازه کار دیگر نده
+                    # اگر کاربر وسط ثبت نام است، دکمه‌های دیگر کار نکنند
                     if chat_id in user_steps and data != "ask_pass":
                         send_msg(chat_id, "⚠️ لطفاً کار فعلی (ثبت محصول) را تمام کنید.")
                         continue
@@ -80,7 +82,7 @@ while True:
                 # --- بخش پیام متنی ---
                 elif "message" in update and "text" in update["message"]:
                     chat_id = update["message"]["chat"]["id"]
-                    text = str(update["message"]["text"]) # تبدیل به رشته برای جلوگیری از ارور
+                    text = str(update["message"]["text"])
                     user_info = update["message"]["from"]
                     
                     print(f"📩 پیام جدید از {chat_id}: {text}")
@@ -89,7 +91,8 @@ while True:
                     if text == ADMIN_PASSWORD:
                         conn = sqlite3.connect('warehouse_final.db')
                         cursor = conn.cursor()
-                        count = cursor.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
+                        count_res = cursor.execute("SELECT COUNT(*) FROM inventory").fetchone()
+                        count = count_res[0] if count_res else 0
                         conn.close()
                         
                         report_pv = (f"📑 **گزارش محرمانه سیستم**\n"
@@ -103,13 +106,3 @@ while True:
                     # ۲. دستورات شروع
                     if text in ["/start", "سلام"]:
                         send_msg(chat_id, "منوی انبارداری:", reply_markup=main_menu())
-                    
-                    # ۳. مراحل ثبت کالا
-                    elif chat_id in user_steps:
-                        step = user_steps[chat_id]["step"]
-                        
-                        if step == "name":
-                            user_steps[chat_id].update({"name": text, "step": "brand"})
-                            send_msg(chat_id, "🏳️ برند محصول:")
-                        
-                        elif step ==
