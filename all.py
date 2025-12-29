@@ -2,27 +2,39 @@ import requests
 import time
 import sqlite3
 
-# ۱. پیکربندی بازو
+# ۱. تنظیمات اتصال به بله
 BALE_TOKEN = "802549012:2SglERgmkafn0HTTh7w8fT304wREI_LUCFs"
 BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
 
-# ۲. ایجاد دیتابیس مرکزی انبار
+# ۲. ایجاد دیتابیس پیشرفته
 def init_db():
-    conn = sqlite3.connect('inventory.db')
+    conn = sqlite3.connect('warehouse.db')
     cursor = conn.cursor()
-    # ایجاد جدول کالاها: نام کالا، تعداد، و قیمت
-    cursor.execute('''CREATE TABLE IF NOT EXISTS products 
+    cursor.execute('''CREATE TABLE IF NOT EXISTS inventory 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       name TEXT UNIQUE, 
-                       quantity INTEGER, 
-                       price TEXT)''')
+                       name TEXT, brand TEXT, price TEXT, year TEXT)''')
     conn.commit()
     conn.close()
 
 init_db()
 
-def send_msg(chat_id, text):
-    requests.post(f"{BASE_URL}/sendMessage", json={'chat_id': chat_id, 'text': text})
+# حافظه موقت برای مراحل ثبت کالا
+user_steps = {}
+
+def send_msg(chat_id, text, reply_markup=None):
+    data = {'chat_id': chat_id, 'text': text}
+    if reply_markup:
+        data['reply_markup'] = reply_markup
+    requests.post(f"{BASE_URL}/sendMessage", json=data)
+
+# ساخت دکمه‌های اصلی
+def main_menu():
+    return {
+        "inline_keyboard": [
+            [{"text": "➕ ثبت محصول جدید", "callback_data": "add_product"}],
+            [{"text": "📋 استعلام کل موجودی", "callback_data": "view_all"}]
+        ]
+    }
 
 def get_updates(offset=None):
     try:
@@ -30,7 +42,7 @@ def get_updates(offset=None):
         return response.json()
     except: return None
 
-print("📦 سامانه انبارداری Next-Gen در بله فعال شد...")
+print("🚀 سامانه انبارداری با منوی شیشه‌ای فعال شد...")
 
 last_update_id = None
 while True:
@@ -38,70 +50,72 @@ while True:
     if updates and updates.get("ok"):
         for update in updates.get("result", []):
             last_update_id = update["update_id"] + 1
-            if "message" in update and "text" in update["message"]:
+            
+            # مدیریت کلیک روی دکمه‌ها
+            if "callback_query" in update:
+                chat_id = update["callback_query"]["message"]["chat"]["id"]
+                data = update["callback_query"]["data"]
+                
+                if data == "add_product":
+                    user_steps[chat_id] = {"step": "name"}
+                    send_msg(chat_id, "🛒 لطفاً **نام کالا** را ارسال کنید:")
+                
+                elif data == "view_all":
+                    conn = sqlite3.connect('warehouse.db')
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name, brand, price, year FROM inventory")
+                    rows = cursor.fetchall()
+                    conn.close()
+                    
+                    if rows:
+                        res = "📋 **لیست کامل موجودی انبار:**\n\n"
+                        for row in rows:
+                            res += f"📦 کالا: {row[0]}\n🏳️ برند: {row[1]}\n💰 قیمت: {row[2]}\n📅 سال: {row[3]}\n\n"
+                        send_msg(chat_id, res, reply_markup=main_menu())
+                    else:
+                        send_msg(chat_id, "❌ انبار خالی است!", reply_markup=main_menu())
+
+            # مدیریت پیام‌های متنی (مراحل ثبت)
+            elif "message" in update and "text" in update["message"]:
                 chat_id = update["message"]["chat"]["id"]
-                msg = update["message"]["text"]
+                text = update["message"]["text"]
 
-                # الف) راهنمای سیستم
-                if msg == "/start" or msg == "سلام":
-                    guide = (
-                        "🏪 **به سامانه مدیریت کالا خوش آمدید**\n\n"
-                        "🔹 **ثبت/ویرایش کالا:**\n`ثبت [نام] [تعداد] [قیمت]`\n"
-                        "مثال: `ثبت لپتاپ 5 45میلیون`\n\n"
-                        "🔹 **استعلام موجودی:**\n`موجودی [نام کالا]`\n"
-                        "مثال: `موجودی لپتاپ`\n\n"
-                        "🔹 **لیست کل انبار:**\nبنویسید: `لیست`"
-                    )
-                    send_msg(chat_id, guide)
-
-                # ب) ثبت کالا در دیتابیس (نبوغ در ذخیره‌سازی)
-                elif msg.startswith("ثبت"):
-                    try:
-                        parts = msg.split()
-                        name = parts[1]
-                        qty = int(parts[2])
-                        price = parts[3]
+                if text == "/start" or text == "سلام":
+                    send_msg(chat_id, "سلام علیرضا! به پنل مدیریت انبار خوش آمدی. یکی از گزینه‌ها را انتخاب کن:", reply_markup=main_menu())
+                
+                elif chat_id in user_steps:
+                    step = user_steps[chat_id]["step"]
+                    
+                    if step == "name":
+                        user_steps[chat_id]["name"] = text
+                        user_steps[chat_id]["step"] = "brand"
+                        send_msg(chat_id, "🏳️ حالا **نام برند** را بفرست:")
+                    
+                    elif step == "brand":
+                        user_steps[chat_id]["brand"] = text
+                        user_steps[chat_id]["step"] = "price"
+                        send_msg(chat_id, "💰 **قیمت** را وارد کن:")
+                    
+                    elif step == "price":
+                        user_steps[chat_id]["price"] = text
+                        user_steps[chat_id]["step"] = "year"
+                        send_msg(chat_id, "📅 **سال تولید** را بفرست:")
+                    
+                    elif step == "year":
+                        name = user_steps[chat_id]["name"]
+                        brand = user_steps[chat_id]["brand"]
+                        price = user_steps[chat_id]["price"]
+                        year = text
                         
-                        conn = sqlite3.connect('inventory.db')
+                        # ذخیره نهایی در دیتابیس
+                        conn = sqlite3.connect('warehouse.db')
                         cursor = conn.cursor()
-                        # استفاده از INSERT OR REPLACE برای آپدیت خودکار کالاها
-                        cursor.execute("INSERT OR REPLACE INTO products (name, quantity, price) VALUES (?, ?, ?)", 
-                                       (name, qty, price))
+                        cursor.execute("INSERT INTO inventory (name, brand, price, year) VALUES (?, ?, ?, ?)", 
+                                       (name, brand, price, year))
                         conn.commit()
                         conn.close()
-                        send_msg(chat_id, f"✅ کالا با موفقیت ثبت/بروزرسانی شد:\n📦 نام: {name}\n🔢 تعداد: {qty}\n💰 قیمت: {price}")
-                    except:
-                        send_msg(chat_id, "❌ فرمت اشتباه! مثال:\nثبت موبایل 10 20میلیون")
-
-                # ج) استعلام از دیتابیس (بخش اصلی قدرت ربات)
-                elif msg.startswith("موجودی"):
-                    target = msg.replace("موجودی", "").strip()
-                    conn = sqlite3.connect('inventory.db')
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT quantity, price FROM products WHERE name = ?", (target,))
-                    result = cursor.fetchone()
-                    conn.close()
-                    
-                    if result:
-                        status = "🟢 موجود" if result[0] > 0 else "🔴 ناموجود"
-                        send_msg(chat_id, f"🔍 نتیجه استعلام {target}:\n\nوضعیت: {status}\nتعداد: {result[0]}\nقیمت: {result[1]}")
-                    else:
-                        send_msg(chat_id, f"❓ کالای «{target}» در دیتابیس انبار پیدا نشد.")
-
-                # د) مشاهده کل انبار
-                elif msg == "لیست":
-                    conn = sqlite3.connect('inventory.db')
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT name, quantity FROM products")
-                    all_items = cursor.fetchall()
-                    conn.close()
-                    
-                    if all_items:
-                        report = "📋 لیست کل موجودی انبار:\n\n"
-                        for item in all_items:
-                            report += f"🔸 {item[0]}: {item[1]} عدد\n"
-                        send_msg(chat_id, report)
-                    else:
-                        send_msg(chat_id, "📦 انبار در حال حاضر خالی است.")
+                        
+                        del user_steps[chat_id] # پاک کردن حافظه موقت
+                        send_msg(chat_id, f"✅ محصول با موفقیت در دیتابیس ثبت شد!\n📦 {name} - {brand}", reply_markup=main_menu())
 
     time.sleep(0.5)
