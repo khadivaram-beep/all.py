@@ -6,7 +6,7 @@ from datetime import datetime
 # -------------------- تنظیمات اختصاصی علیرضا --------------------
 BALE_TOKEN = "8396499160:AAGbLexQ8M4KAc8DTubq5art5ImFSHeFQn0"
 BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
-ADMIN_ID = 1410727630  # آیدی شما که از ترمینال استخراج شد
+ADMIN_ID = 1410727630  # آیدی شما
 ADMIN_PASSWORD = "1109"
 # -----------------------------------------------------------
 
@@ -47,7 +47,6 @@ while True:
                     text = str(update["message"]["text"])
                     u_name = update["message"]["from"].get("first_name", "کاربر")
 
-                    # ۱. بخش مدیریت با رمز
                     if text == ADMIN_PASSWORD:
                         conn = sqlite3.connect('warehouse_final.db')
                         count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
@@ -56,20 +55,18 @@ while True:
                         send_msg(chat_id, msg)
                         continue
 
-                    # ۲. شروع کار
                     if text in ["/start", "سلام"]:
                         markup = {"inline_keyboard": [[{"text": "➕ ثبت محصول", "callback_data": "add"}]]}
                         send_msg(chat_id, "به سامانه انبارداری خوش آمدید:", reply_markup=markup)
                         continue
 
-                    # ۳. مراحل ثبت کالا
                     if chat_id in user_steps:
                         step = user_steps[chat_id]["step"]
                         if step == "name":
                             user_steps[chat_id].update({"name": text, "step": "brand"})
                             send_msg(chat_id, "🏳️ نام برند:")
                         elif step == "brand":
-                            user_steps[chat_id].update({"name2": text, "step": "price"}) # نام برند
+                            user_steps[chat_id].update({"brand_name": text, "step": "price"})
                             send_msg(chat_id, "💰 قیمت:")
                         elif step == "price":
                             user_steps[chat_id].update({"price": text, "step": "year"})
@@ -78,22 +75,21 @@ while True:
                             d = user_steps[chat_id]
                             reg_date = datetime.now().strftime("%Y-%m-%d %H:%M")
                             
-                            # ذخیره دیتابیس
                             conn = sqlite3.connect('warehouse_final.db')
                             cur = conn.cursor()
                             cur.execute("INSERT INTO products (name,brand,price,year,user_id,user_name,reg_date) VALUES (?,?,?,?,?,?,?)",
-                                        (d['name'], d.get('name2'), d['price'], text, chat_id, u_name, reg_date))
+                                        (d['name'], d['brand_name'], d['price'], text, chat_id, u_name, reg_date))
                             db_id = cur.lastrowid
                             conn.commit(); conn.close()
                             
                             send_msg(chat_id, "✅ محصول با موفقیت ثبت شد.")
                             
-                            # 📥 ارسال گزارش به پی‌وی مدیریت (شخص شما)
-                            report = (f"🕵️‍♂️ **ثبت جدید (گزارش مدیر)**\n"
+                            report = (f"🕵️‍♂️ **ثبت جدید**\n"
                                       f"📦 کالا: {d['name']}\n"
+                                      f"🏳️ برند: {d['brand_name']}\n"
                                       f"💰 قیمت: {d['price']}\n"
                                       f"👤 توسط: {u_name}\n"
-                                      f"🆔 کد سیستمی: {db_id}")
+                                      f"🆔 کد: {db_id}")
                             send_msg(ADMIN_ID, report)
                             del user_steps[chat_id]
 
