@@ -2,48 +2,46 @@ import telebot
 import requests
 import json
 
-# ۱. اطلاعات اصلی
+# ۱. اطلاعات اصلی (تلگرام و کلید جدید گوگل)
 TELEGRAM_TOKEN = "8396499160:AAGbLexQ8M4KAc8DTubq5art5ImFSHeFQn0"
-GOOGLE_API_KEY = "AIzaSyDtTMrU6G8_ZJG5OXrQVCX-RE989YFn9s0"
+GOOGLE_API_KEY = "AIzaSyADduA9rZ9VQSDaCYVp7_L0-Cr5gbjwYAE"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 def get_gemini_response(text):
-    # تغییر آدرس به v1 و مدل به gemini-pro برای پایداری بیشتر
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={GOOGLE_API_KEY}"
+    # استفاده از مدل 1.5-flash که بسیار سریع و پایدار است
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
     
     headers = {'Content-Type': 'application/json'}
-    data = {
-        "contents": [{"parts": [{"text": text}]}]
-    }
+    data = {"contents": [{"parts": [{"text": text}]}]}
     
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(data))
+        response = requests.post(url, headers=headers, json=data)
         result = response.json()
         
-        # استخراج متن پاسخ
         if 'candidates' in result:
             return result['candidates'][0]['content']['parts'][0]['text']
         else:
-            # اگر gemini-pro هم نشد، یک شانس به مدل flash در نسخه v1 می‌دهیم
-            url_alt = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
-            response_alt = requests.post(url_alt, headers=headers, data=json.dumps(data))
-            result_alt = response_alt.json()
-            return result_alt['candidates'][0]['content']['parts'][0]['text']
-            
+            # نمایش خطای احتمالی برای عیب‌یابی
+            error_msg = result.get('error', {}).get('message', 'خطای ناشناخته')
+            return f"❌ خطای گوگل: {error_msg}"
     except Exception as e:
-        return f"❌ خطا در پردازش: {str(result.get('error', {}).get('message', 'مدل پیدا نشد'))}"
+        return "⚠️ ارتباط با هوش مصنوعی قطع شد، دوباره تلاش کن."
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    try:
-        print(f"📥 پیام رسید: {message.text}")
-        bot_response = get_gemini_response(message.text)
-        bot.reply_to(message, bot_response)
-        print("✅ پاسخ ارسال شد.")
-    except:
-        bot.reply_to(message, "مشکل در دریافت پاسخ. لطفاً دوباره تلاش کنید.")
+    print(f"📥 پیام از {message.from_user.first_name}: {message.text}")
+    
+    # دریافت پاسخ از هوش مصنوعی
+    bot_response = get_gemini_response(message.text)
+    
+    # ارسال پاسخ به تلگرام
+    bot.reply_to(message, bot_response)
+    print("✅ پاسخ ارسال شد.")
 
 if __name__ == "__main__":
-    print("🚀 تلاش نهایی با مدل gemini-pro...")
+    print("---------------------------------------")
+    print("🚀 تبریک! ربات با کلید جدید روشن شد.")
+    print("📡 همین الان توی تلگرام تستش کن...")
+    print("---------------------------------------")
     bot.infinity_polling()
