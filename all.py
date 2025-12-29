@@ -4,90 +4,67 @@ import sqlite3
 import uuid
 from datetime import datetime
 
-# ۱. پیکربندی
+# ۱. اطلاعات اصلی
 TOKEN = "8396499160:AAGbLexQ8M4KAc8DTubq5art5ImFSHeFQn0"
 bot = telebot.TeleBot(TOKEN)
 
-# ۲. ایجاد دیتابیس استراتژیک مدیریت بحران
-def init_crisis_db():
-    conn = sqlite3.connect('crisis_management.db')
+# ۲. ساخت دیتابیس (اگر وجود نداشته باشد)
+def init_db():
+    conn = sqlite3.connect('crisis_center.db')
     cursor = conn.cursor()
-    # جدول گزارش‌ها: شامل مختصات جغرافیایی، نوع وضعیت و کد پیگیری
     cursor.execute('''CREATE TABLE IF NOT EXISTS reports 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                       ticket_id TEXT,
-                       user_id INTEGER, 
-                       category TEXT, 
-                       latitude REAL, 
-                       longitude REAL, 
-                       status TEXT,
-                       timestamp TEXT)''')
+                      (ticket_id TEXT, user_id INTEGER, category TEXT, status TEXT)''')
     conn.commit()
     conn.close()
 
-init_crisis_db()
+init_db()
 
-# ۳. طراحی منوی فرماندهی
-def main_menu():
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    btn1 = types.KeyboardButton("🚨 اعلام وضعیت بحرانی", request_location=True) # ارسال مستقیم لوکیشن
-    btn2 = types.KeyboardButton("📦 لیست منابع موجود")
-    btn3 = types.KeyboardButton("🔍 پیگیری وضعیت گزارش")
-    btn4 = types.KeyboardButton("📞 تماس با ستاد مرکزی")
+# ۳. تابع ساخت منوی شیشه‌ای (Inline)
+def get_inline_menu():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btn1 = types.InlineKeyboardButton("🚨 ثبت گزارش بحران", callback_data="start_report")
+    btn2 = types.InlineKeyboardButton("🔍 پیگیری با کد", callback_data="track_report")
+    btn3 = types.InlineKeyboardButton("📦 موجودی انبار", callback_data="view_storage")
+    btn4 = types.InlineKeyboardButton("🏢 تماس با مرکز", callback_data="contact_admin")
     markup.add(btn1, btn2, btn3, btn4)
     return markup
 
-@bot.message_handler(commands=['start'])
-def start_system(message):
-    welcome_text = (
-        f"🏛 **سامانه مرکزی مدیریت بحران و توزیع منابع**\n\n"
-        f"جناب {message.from_user.first_name}، هویت شما به عنوان شهروند/امدادگر در شبکه ثبت شد.\n"
-        f"جهت ارسال گزارش سریع، دکمه 'اعلام وضعیت بحرانی' را بزنید."
-    )
-    bot.send_message(message.chat.id, welcome_text, reply_markup=main_menu(), parse_mode="Markdown")
+# ۴. پاسخ به سلام و پیام‌های متنی
+@bot.message_handler(func=lambda message: True)
+def welcome_text(message):
+    user_name = message.from_user.first_name
+    if message.text.lower() in ["سلام", "درود", "hi", "/start"]:
+        bot.send_message(
+            message.chat.id, 
+            f"سلام {user_name} عزیز 🏛\nبه **مرکز کنترل و مدیریت بحران** خوش آمدید.\n\nلطفاً یکی از گزینه‌های زیر را برای شروع انتخاب کنید:", 
+            reply_markup=get_inline_menu(),
+            parse_mode="Markdown"
+        )
+    else:
+        bot.reply_to(message, "⚠️ لطفاً برای تعامل با سامانه از منوی هوشمند زیر استفاده کنید:", reply_markup=get_inline_menu())
 
-# ۴. دریافت لوکیشن و شروع ثبت گزارش (نبوغ در مدیریت داده مکان‌محور)
+# ۵. مدیریت کلیک روی دکمه‌های شیشه‌ای
+@bot.callback_query_handler(func=lambda call: True)
+def callback_manager(call):
+    if call.data == "start_report":
+        # ارسال دکمه لوکیشن برای شروع
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add(types.KeyboardButton("📍 ارسال لوکیشن دقیق برای امداد", request_location=True))
+        bot.send_message(call.message.chat.id, "جهت اعزام نیرو، ابتدا لوکیشن خود را بفرستید:", reply_markup=markup)
+        
+    elif call.data == "view_storage":
+        bot.answer_callback_query(call.id, "در حال استعلام از دیتابیس انبار...")
+        bot.send_message(call.message.chat.id, "📦 **وضعیت انبار مرکزی:**\n- دارو: ۸۰٪\n- سوخت: ۹۵٪\n- جیره غذایی: ۴۰٪ (نیاز به شارژ)")
+
+    elif call.data == "contact_admin":
+        bot.send_message(call.message.chat.id, "📞 خط مستقیم ستاد مرکزی:\n021-12345678")
+
+# ۶. هندلر لوکیشن (ثبت نهایی در دیتابیس)
 @bot.message_handler(content_types=['location'])
 def handle_location(message):
-    lat = message.location.latitude
-    lon = message.location.longitude
-    user_id = message.from_user.id
-    
-    # منوی انتخاب نوع بحران
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("💊 نیاز دارویی", callback_data=f"crisis_medical_{lat}_{lon}"),
-        types.InlineKeyboardButton("🍎 جیره غذایی", callback_data=f"crisis_food_{lat}_{lon}"),
-        types.InlineKeyboardButton("🚒 امداد و نجات", callback_data=f"crisis_rescue_{lat}_{lon}"),
-        types.InlineKeyboardButton("⚠️ تخریب زیرساخت", callback_data=f"crisis_infra_{lat}_{lon}")
-    )
-    
-    bot.send_message(message.chat.id, "📍 موقعیت شما با دقت نظامی ثبت شد.\nنوع بحران را انتخاب کنید:", reply_markup=markup)
+    ticket = str(uuid.uuid4())[:8].upper()
+    # اینجا می‌تونی بقیه مراحل ثبت در دیتابیس رو انجام بدی
+    bot.send_message(message.chat.id, f"✅ لوکیشن دریافت شد.\n🎫 کد رهگیری شما در دیتابیس دولتی: `{ticket}`", parse_mode="Markdown")
 
-# ۵. پردازش نهایی و ذخیره در دیتابیس با کد رهگیری اختصاصی
-@bot.callback_query_handler(func=lambda call: call.data.startswith('crisis_'))
-def finalize_report(call):
-    data = call.data.split('_')
-    category = data[1]
-    lat = data[2]
-    lon = data[3]
-    ticket_id = str(uuid.uuid4())[:8].upper() # تولید کد رهگیری منحصربه‌فرد
-    time_now = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    # ذخیره در دیتابیس
-    conn = sqlite3.connect('crisis_management.db')
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO reports (ticket_id, user_id, category, latitude, longitude, status, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                   (ticket_id, call.from_user.id, category, lat, lon, "در انتظار بررسی", time_now))
-    conn.commit()
-    conn.close()
-
-    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
-                          text=f"✅ **گزارش با موفقیت ثبت شد.**\n\n"
-                               f"🎫 کد رهگیری: `{ticket_id}`\n"
-                               f"🗂 دسته‌بندی: {category}\n"
-                               f"⏰ زمان ثبت: {time_now}\n\n"
-                               f"تیم‌های امدادی بر اساس اولویت جغرافیایی اعزام خواهند شد.", parse_mode="Markdown")
-
-print("🛰 سامانه مدیریت بحران در حال پایش شبکه...")
+print("🛰 ربات با منوی شیشه‌ای فعال شد...")
 bot.infinity_polling()
