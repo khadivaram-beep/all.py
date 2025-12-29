@@ -1,32 +1,40 @@
 import telebot
 import google.generativeai as genai
 
-# ۱. اطلاعات اصلی
+# ۱. اطلاعات جدید (تلگرام و گوگل)
+TELEGRAM_TOKEN = "8396499160:AAGbLexQ8M4KAc8DTubq5art5ImFSHeFQn0"
 GOOGLE_API_KEY = "AIzaSyDtTMrU6G8_ZJG5OXrQVCX-RE989YFn9s0"
-BOT_TOKEN = "802549012:2SglERgmkafn0HTTh7w8fT304wREI_LUCFs"
 
-# ۲. اتصال به هوش مصنوعی
+# ۲. تنظیمات هوش مصنوعی Gemini
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# ۳. تنظیمات بله (خیلی مهم)
-bot = telebot.TeleBot(BOT_TOKEN, threaded=False) # threaded رو False بذار
-telebot.apihelper.API_URL = "https://api.ble.ir/bot{0}/{1}"
-telebot.apihelper.CUSTOM_HEADERS = {'User-Agent': 'Mozilla/5.0'}
+# ۳. راه‌اندازی ربات تلگرام
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# ۴. بخش دریافت پیام
+print("--- سیستم در حال بالا آمدن است ---")
+
 @bot.message_handler(func=lambda message: True)
-def handle_message(message):
+def handle_ai_chat(message):
     try:
-        print(f"📥 پیام رسید: {message.text}")
+        # نمایش وضعیت در ترمینال
+        print(f"📥 پیام از {message.from_user.first_name}: {message.text}")
+        
+        # ارسال پیام به هوش مصنوعی
         response = model.generate_content(message.text)
+        
+        # ارسال پاسخ هوش مصنوعی به تلگرام
         bot.reply_to(message, response.text)
-        print("📤 پاسخ ارسال شد.")
+        print("✅ پاسخ جمینای ارسال شد.")
+        
     except Exception as e:
-        print(f"❌ خطا در پردازش: {e}")
+        print(f"❌ خطایی رخ داد: {e}")
+        bot.reply_to(message, "ببخشید، یه مشکلی پیش اومد. دوباره بگو؟")
 
-# ۵. اجرای مستقیم (بدون چک کردن وضعیت اولیه)
+# ۴. استارت نهایی
 if __name__ == "__main__":
-    print("🚀 ربات علیرضا در حال استارت...")
-    # از polling معمولی استفاده می‌کنیم تا گیر get_me نیفتیم
-    bot.polling(none_stop=True, skip_pending=True)
+    print("---------------------------------------")
+    print("🚀 ربات @Khadivarr_bot در تلگرام روشن شد!")
+    print("📡 آماده دریافت پیام‌های شما هستیم...")
+    print("---------------------------------------")
+    bot.infinity_polling()
